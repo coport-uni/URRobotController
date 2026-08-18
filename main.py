@@ -2,8 +2,10 @@
 
 Four scenarios exercise the four interfaces of the work cell, each one
 relative to wherever the robot happens to be standing when it starts,
-so the demo needs no taught positions:
+so the demo needs no taught positions. A fifth, ``status``, reports the
+cell without moving anything and is the one to run first:
 
+0. Report every interface and the robot state. Moves nothing.
 1. Swing joint 1 by plus and minus 20 degrees about its current angle.
 2. Shift the TCP by plus and minus 20 mm along the base Z axis.
 3. Open the gripper, hold for three seconds, then close it.
@@ -13,9 +15,10 @@ Every scenario returns the robot to where it started.
 
 Run all four, or name the ones you want::
 
-    python main.py --ip 192.168.1.238
+    python main.py status --ip 192.168.1.238
     python main.py joints tcp
     python main.py camera --video demo.mp4
+    python main.py
 """
 
 import argparse
@@ -24,7 +27,11 @@ import time
 
 import cv2
 
-from URRobotController import URRobotController, WorkCellError
+from URRobotController import (
+    CameraError,
+    URRobotController,
+    WorkCellError,
+)
 
 # -- scenario parameters ----------------------------------------------
 
@@ -79,6 +86,46 @@ def describe_pose(pose: list[float]) -> str:
     position = ", ".join(f"{value * 1000.0:+8.2f}" for value in pose[:3])
     rotation = ", ".join(f"{value:+6.3f}" for value in pose[3:])
     return f"[{position}] mm  [{rotation}] rad"
+
+
+def demo_status(robot: URRobotController) -> None:
+    """Report every interface and the robot state, moving nothing.
+
+    Run this first. It answers the two questions that cause almost
+    every failure further down: is each interface actually reachable,
+    and is the pendant in Remote Control.
+
+    Args:
+        robot: A connected controller.
+    """
+    print("\n=== 0. status, nothing moves ===")
+    report = robot.get_connection_report()
+    for name, ok in report.items():
+        print(f"  {name:<10}: {'OK' if ok else 'NOT REACHABLE'}")
+
+    print(f"\n  polyscope     : {robot.polyscope_version()}")
+    print(f"  robot mode    : {robot.robot_mode()}")
+    print(f"  safety        : {robot.safety_status()}")
+    print(f"  remote control: {robot.remote_control()}")
+    print(f"  operational   : {robot.operational_mode()}")
+    print(f"  mode          : {robot.mode()}")
+    print(f"\n  joints [deg]  : {describe_joints(robot.joints())}")
+    print(f"  tcp pose      : {describe_pose(robot.tcp_pose())}")
+
+    if report["gripper"]:
+        print(f"\n  gripper POS   : {robot.gripper_position()}")
+    if report["camera"]:
+        frame = robot.camera_frame("color")
+        print(f"  camera frame  : {frame.shape[1]} x {frame.shape[0]}")
+
+    if not robot.remote_control():
+        print(
+            "\n  WARNING: the pendant is in local control, so scenarios"
+            " 1 and 2 will be refused."
+        )
+    missing = [name for name, ok in report.items() if not ok]
+    if missing:
+        print(f"  WARNING: unreachable interfaces: {', '.join(missing)}")
 
 
 def demo_joint_swing(robot: URRobotController) -> None:
@@ -211,14 +258,22 @@ def demo_camera_clip(robot: URRobotController, path: str) -> None:
     """
     print(f"\n=== 4. record {video_seconds:.0f} s of wrist camera ===")
     frames = []
+    dropped = 0
     started = time.monotonic()
     while time.monotonic() - started < video_seconds:
-        frames.append(robot.camera_frame("color"))
+        try:
+            frames.append(robot.camera_frame("color"))
+        except CameraError:
+            # A single stalled request should cost one frame, not the
+            # whole recording.
+            dropped += 1
         time.sleep(video_poll_interval)
     elapsed = time.monotonic() - started
 
     if not frames:
-        raise RuntimeError("no frames were captured")
+        raise RuntimeError(
+            f"no frames were captured, {dropped} requests failed"
+        )
 
     fps = len(frames) / elapsed if elapsed > 0 else fallback_fps
     height, width = frames[0].shape[:2]
@@ -235,11 +290,14 @@ def demo_camera_clip(robot: URRobotController, path: str) -> None:
         writer.release()
 
     print(f"  captured {len(frames)} frames in {elapsed:.2f} s")
+    if dropped:
+        print(f"  dropped {dropped} stalled requests")
     print(f"  resolution {width} x {height}, {fps:.1f} fps")
     print(f"  saved to {path}")
 
 
 scenarios = {
+    "status": demo_status,
     "joints": demo_joint_swing,
     "tcp": demo_tcp_z_shift,
     "gripper": demo_gripper_cycle,
@@ -262,7 +320,7 @@ def parse_arguments() -> argparse.Namespace:
         "scenario",
         nargs="*",
         choices=list(scenarios) + [],
-        help="scenarios to run; all four when omitted",
+        help="scenarios to run; all of them, in order, when omitted",
     )
     parser.add_argument(
         "--ip", default=default_robot_ip, help="robot IP address"

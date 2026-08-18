@@ -98,3 +98,25 @@ a single god-class file named `URRobotController`.
 - [x] Ruff check and format clean on all Python files
 - [x] Update the GitHub issue, push branch, open PR
 - [x] Create `LearnedPatterns.md` from completed items (CLAUDE.md §10)
+
+---
+
+## Task 2 — User-facing verification setup (2026-08-18)
+
+**Request**: Make each feature verifiable by the user. Build a conda
+environment around `main.py` and write up how to test each feature.
+
+- [x] Add a `status` scenario that reports every interface, the safety
+      state and Remote Control without moving anything, so the user has
+      a safe first step
+- [x] Add `environment.yml` for a conda environment `ur-workcell`,
+      with OpenCV from conda-forge for its GUI backend and `ur_rtde`
+      via pip
+- [x] Create the environment and verify it drives the real robot
+      end to end, not just that it imports
+- [x] Rewrite `README.md` as a verification guide: setup, the three
+      robot prerequisites, one section per feature with the expected
+      output, and the error code table
+- [x] Fix the camera stalling under back-to-back requests, found while
+      checking the documented commands actually run: one retry in the
+      fetch and per-frame tolerance in the recording scenario

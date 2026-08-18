@@ -43,7 +43,8 @@ camera_port = 4242
 
 default_connect_timeout = 5.0
 gripper_timeout = 2.0
-camera_timeout = 3.0
+camera_timeout = 5.0
+camera_attempts = 2
 dashboard_timeout = 5.0
 
 # -- motion defaults (specification section 4.3) ----------------------
@@ -1694,15 +1695,23 @@ class URRobotController:
         failures = []
         for path in paths:
             url = self._camera_url(path, image_type)
-            try:
-                response = self._session.get(url, timeout=camera_timeout)
-            except requests.RequestException as exc:
-                failures.append(f"{url}: {type(exc).__name__}")
-                continue
-            if response.status_code == 200 and response.content:
-                self._camera_path = path
-                return response.content
-            failures.append(f"{url}: HTTP {response.status_code}")
+            # The URCap occasionally stalls past the timeout when
+            # frames are requested back to back, then serves the next
+            # request normally. One retry costs little and turns that
+            # stall into a hiccup instead of a failed capture.
+            for attempt in range(camera_attempts):
+                try:
+                    response = self._session.get(url, timeout=camera_timeout)
+                except requests.RequestException as exc:
+                    failures.append(
+                        f"{url}: {type(exc).__name__} (attempt {attempt + 1})"
+                    )
+                    continue
+                if response.status_code == 200 and response.content:
+                    self._camera_path = path
+                    return response.content
+                failures.append(f"{url}: HTTP {response.status_code}")
+                break
 
         # A cached path that stops working is worth retrying from
         # scratch on the next call.
