@@ -1,0 +1,25 @@
+[project]
+name = "ur-robot-controller"
+version = "0.1.0"
+description = "Integrated UR7e motion, gripper, camera and program control"
+requires-python = ">=3.10"
+dependencies = [
+    "ur_rtde>=1.5.6",
+    "requests>=2.28",
+    "opencv-python>=4.5",
+    "numpy>=1.23",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["URRobotController"]
+
+[tool.ruff]
+line-length = 80
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
