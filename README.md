@@ -155,6 +155,27 @@ the clip is the same length as the recording.
 The URCap serves one still per request rather than a stream, which is
 why the rate is around 7 fps rather than video rate.
 
+### Feature 5 — motion and gripper in one call
+
+The specification's headline feature. Verified by a dedicated script
+rather than a demo scenario, because it needs timing instrumentation.
+**The arm and the fingers move.**
+
+```bash
+PYTHONPATH=.:claude_test python claude_test/verify_motion_gripper_sync.py
+```
+
+Expected: every trigger mode within its bound.
+
+```
+=== T03  trigger="start" ===          fire latency 6.6 ms (limit 50 ms)
+=== T05  trigger="end" ===            gripper_pos 249, gripper_obj 3
+=== T04  trigger="remaining_joint" ===  fired at 0.09972 of 0.10000 rad
+=== 4.4-3  blocking=False ===         call returned in 18 ms
+=== T09  gripper unavailable ===      motion continued, error recorded
+V5 PASS
+```
+
 ### All of them, in order
 
 ```bash
@@ -240,7 +261,7 @@ the pendant to Remote Control before commanding motion over RTDE
 | `URRobotController.py` | The controller class, the data types and the exception hierarchy |
 | `main.py` | The five scenarios above |
 | `claude_test/` | Hardware verification and diagnostic scripts, indexed in its own README |
-| `docs/` | The development specification and the UR manuals consulted |
+| `docs/` | The specification, the verification report, and the UR manuals consulted |
 | `environment.yml` | The conda environment |
 
 ## 6. Development
@@ -253,3 +274,8 @@ ruff format --check .
 Both must pass before committing; the repository hooks enforce it. See
 `CLAUDE.md` for the full conventions and `LearnedPatterns.md` for the
 traps this cell has already sprung.
+
+`docs/VerificationReport.md` records what has been measured against the
+specification, including the three test items that have **not** been
+exercised yet — object detection with something in the fingers, stored
+program execution, and protective stop handling.

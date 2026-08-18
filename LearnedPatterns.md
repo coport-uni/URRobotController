@@ -19,6 +19,11 @@ reused rather than rediscovered. Format per CLAUDE.md section 10.
 - **Rule**: Always confirm a device accepted the new command before
   polling for its completion; never treat a stale register as an
   answer. (from ToDo#1 V3, ToDo#1 URCap diagnosis)
+- **Recurrence**: the identical race reappeared in a second place,
+  `_collect_gripper_status`, and made `wait_object` report the previous
+  move's state. Fixing a race in one caller is not fixing it; find
+  every reader of that status and give them one shared wait.
+  (from ToDo#3 V5)
 
 ---
 
@@ -44,6 +49,18 @@ reused rather than rediscovered. Format per CLAUDE.md section 10.
   and 7 as expected while activation runs.
 - **Rule**: Never request motion from a Robotiq gripper until
   activation reports finished. (from ToDo#1 V3)
+
+**Timing a device event from the wrong instant**
+- **Problem**: The `"start"` trigger looked like it missed its 50 ms
+  budget by four times over.
+- **Cause**: The clock started at entry into the call, which included
+  the one-off RTDE control script upload of about 200 ms. The robot is
+  not moving for any of that.
+- **Fix**: Start the clock where the motion is actually dispatched, and
+  offer `acquire_motion()` so the upload can be paid during setup.
+- **Rule**: Always measure a latency budget from the event it is
+  defined against, and separate one-off setup from steady-state cost.
+  (from ToDo#3 V5)
 
 ---
 

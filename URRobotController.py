@@ -469,6 +469,7 @@ class URRobotController:
         self._async_observed_running = False
         self._async_kind = ""
         self._async_target: list[float] = []
+        self._fired_gripper_target: int | None = None
 
     # =================================================================
     # Lifecycle (specification section 4.1)
@@ -617,6 +618,26 @@ class URRobotController:
                 ) from exc
             raise
         self._mode = Mode.motion
+
+    def acquire_motion(self) -> None:
+        """Take RTDE external control now, before the first move.
+
+        Opening the control interface uploads a control script to the
+        robot and costs roughly 200 ms. A move normally pays that on
+        its first call, which delays the whole call including any
+        attached gripper trigger. Calling this during setup moves the
+        cost out of the motion path, which matters when a gripper
+        action has to be issued at a known point of the motion.
+
+        Taking control also takes the robot away from the pendant,
+        which is why :meth:`connect` does not do it implicitly.
+
+        Raises:
+            ModeConflictError: If a stored program is running, or the
+                pendant is in local control.
+            ConnectionFailedError: If RTDE control cannot be opened.
+        """
+        self._enter_motion_mode()
 
     def release_motion(self) -> None:
         """Give up RTDE external control and return to IDLE."""
@@ -1015,6 +1036,7 @@ class URRobotController:
         if self._watch_thread is not None:
             self.wait_motion_done()
 
+        self._fired_gripper_target = None
         self._enter_motion_mode()
         started = time.monotonic()
 
@@ -1232,6 +1254,7 @@ class URRobotController:
                 gripper.force,
                 wait=False,
             )
+            self._fired_gripper_target = gripper.position
         except (GripperError, ConnectionFailedError) as exc:
             result.gripper_error = str(exc)
             if self.abort_motion_on_gripper_fault:
@@ -1242,14 +1265,14 @@ class URRobotController:
         """Wait for the fingers to settle and record their status."""
         if not self.gripper_enabled or result.gripper_error is not None:
             return
-        deadline = time.monotonic() + gripper_settle_timeout
+        if self._fired_gripper_target is None:
+            return
         try:
-            while time.monotonic() < deadline:
-                if self.gripper_get("OBJ") != object_moving:
-                    break
-                time.sleep(watch_interval)
-            result.gripper_obj = self.gripper_get("OBJ")
-            result.gripper_pos = self.gripper_get("POS")
+            position, status = self._wait_gripper_settled(
+                self._fired_gripper_target, gripper_settle_timeout
+            )
+            result.gripper_pos = position
+            result.gripper_obj = status
         except (GripperError, ConnectionFailedError) as exc:
             result.gripper_error = str(exc)
 
@@ -1589,13 +1612,31 @@ class URRobotController:
         if not wait:
             return self.gripper_get("POS"), self.gripper_get("OBJ")
 
-        # The gripper echoes the target it accepted in PRE. Polling OBJ
-        # before that echo arrives reads the status left over from the
-        # previous move, so a fresh command looks finished the instant
-        # it is issued. Waiting for the echo closes that race. The echo
-        # may never match exactly when the gripper clamps the target to
-        # its calibrated range, so the wait is bounded rather than
-        # unconditional.
+        return self._wait_gripper_settled(position, timeout)
+
+    def _wait_gripper_settled(
+        self, position: int, timeout: float
+    ) -> tuple[int, int]:
+        """Wait for the gripper to accept a target and stop moving.
+
+        The gripper echoes the target it accepted in PRE. Polling OBJ
+        before that echo arrives reads the status left over from the
+        previous move, so a fresh command looks finished the instant it
+        is issued. Waiting for the echo closes that race. The echo may
+        never match exactly when the gripper clamps the target to its
+        calibrated range, so that wait is bounded rather than
+        unconditional.
+
+        Args:
+            position: The target that was commanded.
+            timeout: Seconds to wait for the fingers to stop.
+
+        Returns:
+            Tuple of the final position and the OBJ status.
+
+        Raises:
+            GripperError: If the fingers never stopped in time.
+        """
         echo_deadline = time.monotonic() + gripper_echo_timeout
         while time.monotonic() < echo_deadline:
             if self.gripper_get("PRE") == position:

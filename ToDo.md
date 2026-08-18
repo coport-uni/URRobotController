@@ -120,3 +120,32 @@ environment around `main.py` and write up how to test each feature.
 - [x] Fix the camera stalling under back-to-back requests, found while
       checking the documented commands actually run: one retry in the
       fetch and per-frame tolerance in the recording scenario
+
+---
+
+## Task 3 — Verify section 4.4 and record the results (2026-08-18)
+
+**Request**: Record the work so far in the documentation, then commit,
+push and merge to `main`.
+
+Before merging, CLAUDE.md §5.1 rule 4 forbids merging a PR containing a
+path that was never exercised. The specification's headline feature,
+section 4.4 simultaneous motion and gripper, had never run because the
+gripper was firewalled off, so it was verified first.
+
+- [x] `claude_test/verify_motion_gripper_sync.py` — V5, covering T03,
+      T04, T05, T09 and the non-blocking path of section 4.4 item 3
+- [x] Fix the trigger latency measurement: the 50 ms of T03 is measured
+      from the moment the move is dispatched, not from entry into the
+      call, because the one-off control script upload costs about
+      200 ms and the robot does not move during it
+- [x] Add `acquire_motion()` so that upload can be paid during setup
+- [x] Fix `wait_object` reporting the previous move's gripper state:
+      `_collect_gripper_status` had the same PRE echo race that
+      `gripper_move` had, now shared through `_wait_gripper_settled()`
+- [x] `docs/VerificationReport.md` — conformance against all ten
+      section 8 test items, the three deviations from the
+      specification, the five bugs found on hardware, and the firewall
+      procedure. T06, T07 and T10 are recorded as **not verified**,
+      with the reason for each
+- [x] Merge to `main`
