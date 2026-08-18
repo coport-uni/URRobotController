@@ -1,0 +1,23 @@
+# Conda environment for the UR7e work cell controller.
+#
+# Create it with:
+#   conda env create -f environment.yml
+#   conda activate ur-workcell
+#
+# OpenCV comes from conda-forge rather than pip because the conda build
+# carries the GUI backend that camera_live() needs for its preview
+# window. ur_rtde is pip-only, so it stays under the pip section.
+name: ur-workcell
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - numpy>=1.23
+  - opencv>=4.5
+  - requests>=2.28
+  - pip
+  - pip:
+      - ur_rtde>=1.5.6
+      - ruff>=0.6
